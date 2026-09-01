@@ -1,29 +1,20 @@
-# FLTK Deep Sniper
+# Deep Sniper
 
-A compact Windows starter for a tray-first, frameless FLTK application.
+Deep Sniper is a Windows tray utility for capturing an entire window or an
+accessible element inside Chrome, Vivaldi, Brave, or Firefox. It uses Windows
+UI Automation rather than a browser extension and can render an obscured
+window through `PrintWindow` without bringing it to the foreground.
 
-## Included
+## Requirements
 
-- Frameless, draggable FLTK window with a custom header.
-- Tray icon with left-click Open and right-click Open/Exit actions.
-- Tray-only startup and hide-on-close behavior.
-- Low-CPU message loop that continues to dispatch tray events while the FLTK window is hidden.
-- SQLite settings database under `%LOCALAPPDATA%\DeepSniper`.
-- JSON state serialization with nlohmann-json.
-- Rotating application log under `%LOCALAPPDATA%\DeepSniper\logs` using spdlog.
-- Catch2 unit tests.
-- Static x64 MSVC build through a vcpkg manifest.
-
-FLTK 1.4.5 is fetched directly from its GitHub release tag. SQLite, nlohmann-json, spdlog, and Catch2 are resolved through vcpkg.
+- Windows 10 1703 or newer, or Windows 11
+- Visual Studio 2022 with Desktop development with C++
+- CMake 3.25 or newer
+- vcpkg with `VCPKG_ROOT` set
 
 ## Build
 
-Requirements:
-
-- Windows 10 or 11
-- Visual Studio 2022 with Desktop development with C++
-- CMake 3.25 or newer
-- vcpkg, with `VCPKG_ROOT` set
+The repository always uses the `build` directory.
 
 ```powershell
 cmake --preset release
@@ -33,16 +24,26 @@ ctest --preset release
 
 The executable is written to `build\Release\DeepSniper.exe`.
 
-## Run
+## Use
 
-The application starts in the notification area. Left-click the tray icon to open the window. Right-click it for the Open and Exit menu.
+Deep Sniper starts in the notification area. Left-click its icon, choose
+**Start Capture** from its menu, or press the configured global hotkey. Move
+the pointer over a target and left-click to capture it. Escape cancels.
 
-## Customize
+After capture, choose **Save default**, **Save As**, **Copy**, or **Cancel**.
+PNG and JPEG are supported. Settings are stored in
+`%LOCALAPPDATA%\DeepSniper\settings.json`; logs are stored beside them under
+`logs`.
 
-To rename this template for a new application, run the PowerShell script from the project root:
+## Known v1 limits
 
-```powershell
-.\Rename-Template.ps1 -AppName "My App"
-```
+- Only one monitor is supported.
+- A browser accessibility tree may take one or two seconds to warm up.
+- Browser UI Automation failure falls back to the whole browser window.
+- DRM, protected video, secure desktop, or elevated processes may return a
+  black or unavailable capture.
+- Multi-monitor capture, annotation, video/GIF, uploads, and custom filename
+  patterns are outside v1.
 
-The script updates the CMake targets, vcpkg package name, README, C++ application strings, and test target names. It skips `build`, `.git`, and the script itself. Use `-WhatIf` to preview the files that would change.
+Implementation progress and manual verification status are tracked in
+[`docs/260902-screen-capture-implementation-plan.md`](docs/260902-screen-capture-implementation-plan.md).

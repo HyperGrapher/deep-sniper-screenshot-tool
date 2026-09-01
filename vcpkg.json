@@ -6,9 +6,7 @@
   "dependencies": [
     "catch2",
     "nlohmann-json",
-    "spdlog",
-    "sqlite3"
-    
+    "sdl3",
+    "spdlog"
   ]
 }
-

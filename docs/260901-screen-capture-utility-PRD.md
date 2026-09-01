@@ -52,7 +52,7 @@ A background Windows tray utility that lets a user visually pick either a whole 
   - **Save as...** — opens a standard save dialog.
   - **Copy to clipboard** — puts the image on the clipboard.
   - **Cancel** — discards the captured image, no file written.
-- Supported output formats: PNG, JPG, BMP (selectable default in Settings).
+- Supported output formats: PNG and JPG (selectable default in Settings).
 
 ## 9. Settings GUI (FLTK, opened from tray right-click menu)
 - Default save folder

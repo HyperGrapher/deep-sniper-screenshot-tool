@@ -15,8 +15,8 @@ endif()
 include(FetchContent)
 include(CTest)
 
-find_package(unofficial-sqlite3 CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
+find_package(SDL3 CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 
 if(BUILD_TESTING)
@@ -37,33 +37,49 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(fltk)
 
 add_library(deep_sniper_core STATIC
-    src/app_state.cpp
-    src/database.cpp
+    src/browser_detector.cpp
+    src/capture_engine.cpp
+    src/capture_geometry.cpp
+    src/settings.cpp
 )
 target_include_directories(deep_sniper_core PUBLIC src)
 target_link_libraries(deep_sniper_core PUBLIC
-    unofficial::sqlite3::sqlite3
     nlohmann_json::nlohmann_json
+    dwmapi
+    gdi32
+    ole32
+    oleaut32
+    shell32
+    uiautomationcore
+    windowscodecs
 )
 
 add_executable(DeepSniper WIN32
     src/main.cpp
+    src/overlay.cpp
+    src/tray_icon.cpp
     src/app.rc
 )
 target_link_libraries(DeepSniper PRIVATE
     fltk::fltk
     deep_sniper_core
+    SDL3::SDL3
     spdlog::spdlog
     comctl32
+    dwmapi
+    gdi32
+    oleaut32
     shell32
     user32
-    gdi32
     ole32
+    uiautomationcore
+    windowscodecs
 )
 
 if(MSVC)
     target_compile_options(deep_sniper_core PRIVATE /W4 /permissive- /utf-8)
     target_compile_options(DeepSniper PRIVATE /W4 /permissive- /utf-8)
+    target_link_options(DeepSniper PRIVATE /MANIFEST:NO)
 endif()
 
 set_target_properties(DeepSniper PROPERTIES
@@ -74,4 +90,3 @@ set_target_properties(DeepSniper PROPERTIES
 if(BUILD_TESTING)
     add_subdirectory(tests)
 endif()
-

@@ -1,6 +1,8 @@
 add_executable(DeepSniperTests
-    app_state_tests.cpp
-    database_tests.cpp
+    browser_detector_tests.cpp
+    capture_geometry_tests.cpp
+    image_output_tests.cpp
+    settings_tests.cpp
 )
 target_link_libraries(DeepSniperTests PRIVATE
     Catch2::Catch2WithMain
@@ -9,4 +11,3 @@ target_link_libraries(DeepSniperTests PRIVATE
 
 include(Catch)
 catch_discover_tests(DeepSniperTests)
-
