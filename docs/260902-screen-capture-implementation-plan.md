@@ -96,6 +96,27 @@ separately and are never implied by a completed implementation stage.
   save/copy workflow still require the manual acceptance checks below. See the
   README for regression-test commands.
 
+## UI redesign (2026-09-05)
+
+- [x] Replace the capture action dialog with a frameless 244 x 64 icon toolbar:
+      Save default, Save As, Copy, and Discard. Preserve the existing callbacks
+      and Escape behavior; add descriptive tooltips, keyboard focus outlines,
+      and Ctrl+S / Ctrl+Shift+S / Ctrl+C shortcuts.
+- [x] Introduce shared, code-drawn icons and dark themed buttons/dropdowns
+      without an icon font, bitmap assets, or new dependencies.
+- [x] Redesign Settings with separate output/shortcut sections, Segoe UI,
+      charcoal surfaces, mint accents, padded fields, and a dark native title bar
+      where Windows supports it. Keep PNG/JPEG and existing settings behavior.
+- [x] Center Settings in the current screen's usable area each time it opens
+      (the tray application has no main window to center it within).
+- [x] Build Release, pass all 15 CTest tests, and run the opt-in native UI smoke
+      test against the real application. Verify centering, no toolbar caption
+      or resize frame, and Escape discarding a fixture capture. Inspect both
+      generated UI preview PNGs for clipping and contrast.
+
+The UI smoke test does not exercise saving files, clipboard writes, or changing
+persisted settings; those remain part of the acceptance checklist below.
+
 ## Manual acceptance
 
 - [ ] Tray left-click, tray menu, and Print Screen enter Capture Mode.

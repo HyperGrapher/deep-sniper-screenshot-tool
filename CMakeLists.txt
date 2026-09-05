@@ -58,6 +58,7 @@ add_executable(DeepSniper WIN32
     src/main.cpp
     src/overlay.cpp
     src/tray_icon.cpp
+    src/ui_widgets.cpp
     src/app.rc
 )
 target_link_libraries(DeepSniper PRIVATE

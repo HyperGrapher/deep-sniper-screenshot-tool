@@ -1,5 +1,6 @@
 #define NOMINMAX
 #include <windows.h>
+#include <dwmapi.h>
 #include <shlobj.h>
 
 #include <algorithm>
@@ -18,6 +19,7 @@
 #include <FL/Fl_Choice.H>
 #include <FL/Fl_Double_Window.H>
 #include <FL/Fl_Input.H>
+#include <FL/Fl_Tooltip.H>
 #include <FL/fl_ask.H>
 #include <FL/platform.H>
 #include <SDL3/SDL.h>
@@ -30,18 +32,19 @@
 #include "overlay.hpp"
 #include "settings.hpp"
 #include "tray_icon.hpp"
+#include "ui_widgets.hpp"
 
 namespace {
 
 constexpr wchar_t kAppId[] = L"DeepSniper";
 constexpr wchar_t kSingleInstanceName[] = L"Local\\DeepSniper.SingleInstance";
 
-const Fl_Color kBackground = fl_rgb_color(17, 23, 32);
-const Fl_Color kPanel = fl_rgb_color(29, 39, 53);
-const Fl_Color kText = fl_rgb_color(235, 240, 247);
-const Fl_Color kMuted = fl_rgb_color(149, 164, 182);
-const Fl_Color kAccent = fl_rgb_color(55, 183, 158);
-const Fl_Color kDanger = fl_rgb_color(220, 90, 90);
+using UiTheme::kBackground;
+using UiTheme::kPanel;
+using UiTheme::kText;
+using UiTheme::kMuted;
+using UiTheme::kAccent;
+using UiTheme::kDanger;
 
 class App;
 
@@ -111,14 +114,6 @@ void configureLogging(const std::filesystem::path& dataDirectory) {
     return result;
 }
 
-void styleButton(Fl_Button& button, Fl_Color color = kPanel) {
-    button.box(FL_THIN_UP_BOX);
-    button.color(color);
-    button.selection_color(kAccent);
-    button.labelcolor(kText);
-    button.labelsize(12);
-}
-
 Fl_Box* addLabel(int x, int y, int width, int height, const char* text, Fl_Color color = kText) {
     auto* label = new Fl_Box(x, y, width, height, text);
     label->box(FL_NO_BOX);
@@ -152,9 +147,9 @@ private:
     bool alreadyExists_{};
 };
 
-class HotkeyButton final : public Fl_Button {
+class HotkeyButton final : public ThemedButton {
 public:
-    HotkeyButton(int x, int y, int width, int height) : Fl_Button(x, y, width, height) { styleButton(*this); }
+    HotkeyButton(int x, int y, int width, int height) : ThemedButton(x, y, width, height, "") {}
 
     void setHotkey(Hotkey hotkey) {
         hotkey_ = hotkey;
@@ -170,7 +165,7 @@ public:
             return 1;
         }
         if (event != FL_KEYDOWN) {
-            return Fl_Button::handle(event);
+            return ThemedButton::handle(event);
         }
 
         const int key = Fl::event_original_key();
@@ -233,9 +228,16 @@ public:
             settings_ = defaultSettings();
             spdlog::warn("Settings could not be loaded; defaults are active: {}", error.what());
         }
-        Fl::scheme("gtk+");
-        Fl::background(17, 23, 32);
-        Fl::foreground(235, 240, 247);
+        Fl::scheme("base");
+        Fl::set_font(FL_HELVETICA, "Segoe UI");
+        Fl::set_font(FL_HELVETICA_BOLD, "BSegoe UI");
+        Fl::background(17, 19, 24);
+        Fl::background2(34, 40, 50);
+        Fl::foreground(235, 239, 245);
+        Fl_Tooltip::color(kPanel);
+        Fl_Tooltip::textcolor(kText);
+        Fl_Tooltip::size(12);
+        Fl_Tooltip::delay(0.35F);
         if (!tray_.create()) {
             throw std::runtime_error("Unable to create the notification-area icon.");
         }
@@ -422,21 +424,31 @@ private:
     }
 
     void showReview(PixelRect targetBounds) {
-        constexpr int width = 510;
-        constexpr int height = 92;
+        constexpr int width = 244;
+        constexpr int height = 64;
         if (reviewWindow_ == nullptr) {
             reviewWindow_ = std::make_unique<ReviewWindow>(*this, width, height);
             reviewWindow_->label("Deep Sniper - Capture ready");
-            reviewWindow_->color(kBackground);
+            reviewWindow_->border(0);
+            reviewWindow_->color(kPanel);
             reviewWindow_->begin();
-            addLabel(14, 8, 480, 20, "Capture ready. Choose an action:", kMuted);
-            auto* saveDefault = new Fl_Button(14, 38, 128, 38, "Save default");
-            auto* saveAs = new Fl_Button(148, 38, 108, 38, "Save As...");
-            auto* copy = new Fl_Button(262, 38, 108, 38, "Copy");
-            auto* cancel = new Fl_Button(376, 38, 118, 38, "Cancel");
-            for (Fl_Button* button : {saveDefault, saveAs, copy, cancel}) {
-                styleButton(*button);
-            }
+            auto* saveDefault = new ThemedButton(8, 8, 48, 48, "Save default", ButtonIcon::Save);
+            auto* saveAs = new ThemedButton(64, 8, 48, 48, "Save As", ButtonIcon::SaveAs);
+            auto* copy = new ThemedButton(120, 8, 48, 48, "Copy", ButtonIcon::Copy);
+            auto* divider = new Fl_Box(180, 20, 1, 24);
+            divider->box(FL_FLAT_BOX);
+            divider->color(UiTheme::kBorder);
+            auto* cancel = new ThemedButton(188, 8, 48, 48, "Discard", ButtonIcon::Close);
+            saveDefault->color(kAccent);
+            saveDefault->labelcolor(kBackground);
+            cancel->labelcolor(kDanger);
+            saveDefault->tooltip("Save to default folder (Ctrl+S)");
+            saveAs->tooltip("Save as... (Ctrl+Shift+S)");
+            copy->tooltip("Copy image (Ctrl+C)");
+            cancel->tooltip("Discard capture (Esc)");
+            saveDefault->shortcut(FL_CTRL | 's');
+            saveAs->shortcut(FL_CTRL | FL_SHIFT | 's');
+            copy->shortcut(FL_CTRL | 'c');
             saveDefault->callback([](Fl_Widget*, void* value) { static_cast<App*>(value)->saveDefault(); }, this);
             saveAs->callback([](Fl_Widget*, void* value) { static_cast<App*>(value)->saveAs(); }, this);
             copy->callback([](Fl_Widget*, void* value) { static_cast<App*>(value)->copyToClipboard(); }, this);
@@ -468,30 +480,70 @@ private:
         formatChoice_->value(settings_.defaultFormat == ImageFormat::Png ? 0 : 1);
         hotkeyButton_->setHotkey(settings_.captureHotkey);
         updateHotkeyStatus();
+        int mouseX{}, mouseY{}, screenX{}, screenY{}, screenWidth{}, screenHeight{};
+        Fl::get_mouse(mouseX, mouseY);
+        const int screen = Fl::screen_num(mouseX, mouseY);
+        settingsWindow_->screen_num(screen);
+        Fl::screen_work_area(screenX, screenY, screenWidth, screenHeight, screen);
+        settingsWindow_->position(screenX + (screenWidth - settingsWindow_->w()) / 2,
+                                  screenY + (screenHeight - settingsWindow_->h()) / 2);
         settingsWindow_->show();
+        const BOOL useDarkTitleBar = TRUE;
+        DwmSetWindowAttribute(fl_xid(settingsWindow_.get()), DWMWA_USE_IMMERSIVE_DARK_MODE,
+                              &useDarkTitleBar, sizeof(useDarkTitleBar));
         settingsWindow_->take_focus();
     }
 
     void buildSettingsWindow() {
-        settingsWindow_ = std::make_unique<Fl_Double_Window>(520, 244, "Deep Sniper Settings");
+        settingsWindow_ = std::make_unique<Fl_Double_Window>(600, 510, "Deep Sniper Settings");
         settingsWindow_->color(kBackground);
         settingsWindow_->begin();
-        addLabel(18, 18, 480, 22, "Default save folder");
-        folderInput_ = new Fl_Input(18, 44, 390, 30);
-        auto* browseButton = new Fl_Button(416, 44, 84, 30, "Browse...");
-        styleButton(*browseButton);
+        addLabel(28, 18, 544, 18, "DEEP SNIPER", kMuted)->labelsize(11);
+        auto* heading = addLabel(28, 42, 544, 32, "Settings");
+        heading->labelsize(26);
+        heading->labelfont(FL_HELVETICA_BOLD);
+        addLabel(28, 82, 544, 20, "Your captures, saved your way.", kMuted)->labelsize(13);
+        for (const PixelRect card : {PixelRect{24, 120, 576, 294}, PixelRect{24, 310, 576, 420}}) {
+            auto* panel = new Fl_Box(card.left, card.top, card.width(), card.height());
+            panel->box(FL_FLAT_BOX);
+            panel->color(kPanel);
+        }
+        addLabel(44, 136, 500, 20, "Save location")->labelfont(FL_HELVETICA_BOLD);
+        auto* folderSurface = new Fl_Box(44, 166, 436, 40);
+        folderSurface->box(FL_FLAT_BOX);
+        folderSurface->color(UiTheme::kControl);
+        folderInput_ = new Fl_Input(54, 176, 416, 20);
+        folderInput_->box(FL_FLAT_BOX);
+        folderInput_->color(UiTheme::kControl);
+        folderInput_->textcolor(kText);
+        folderInput_->textsize(13);
+        folderInput_->cursor_color(kAccent);
+        folderInput_->selection_color(fl_rgb_color(46, 103, 92));
+        folderInput_->tooltip("Default screenshot folder");
+        auto* browseButton = new ThemedButton(492, 166, 60, 40, "Browse folder", ButtonIcon::Folder);
+        browseButton->tooltip("Choose default save folder");
         browseButton->callback([](Fl_Widget*, void* value) { static_cast<App*>(value)->browseFolder(); }, this);
-        addLabel(18, 88, 150, 22, "Default format");
-        formatChoice_ = new Fl_Choice(168, 86, 130, 30);
+        addLabel(44, 230, 300, 20, "Image format")->labelfont(FL_HELVETICA_BOLD);
+        addLabel(44, 252, 300, 18, "PNG for detail. JPEG for smaller files.", kMuted);
+        formatChoice_ = new ThemedChoice(380, 232, 172, 40);
+        formatChoice_->box(FL_FLAT_BOX);
+        formatChoice_->down_box(FL_FLAT_BOX);
+        formatChoice_->color(UiTheme::kControl);
+        formatChoice_->textcolor(kText);
+        formatChoice_->textsize(13);
+        formatChoice_->selection_color(UiTheme::kHover);
+        formatChoice_->tooltip("Default image format");
         formatChoice_->add("PNG");
         formatChoice_->add("JPEG");
-        addLabel(18, 132, 150, 22, "Capture hotkey");
-        hotkeyButton_ = new HotkeyButton(168, 128, 240, 32);
-        hotkeyStatus_ = addLabel(18, 166, 480, 28, "", kMuted);
-        auto* saveButton = new Fl_Button(300, 202, 98, 32, "Save");
-        auto* cancelButton = new Fl_Button(404, 202, 96, 32, "Cancel");
-        styleButton(*saveButton, kAccent);
-        styleButton(*cancelButton);
+        addLabel(44, 328, 236, 20, "Capture shortcut")->labelfont(FL_HELVETICA_BOLD);
+        addLabel(44, 352, 236, 18, "Click the key to record a shortcut.", kMuted);
+        hotkeyButton_ = new HotkeyButton(300, 328, 252, 42);
+        hotkeyButton_->tooltip("Click, then press your preferred capture shortcut");
+        hotkeyStatus_ = addLabel(44, 384, 508, 20, "", kMuted);
+        auto* cancelButton = new ThemedButton(316, 448, 108, 38, "Cancel");
+        auto* saveButton = new ThemedButton(436, 448, 140, 38, "Save changes");
+        saveButton->color(kAccent);
+        saveButton->labelcolor(kBackground);
         saveButton->callback([](Fl_Widget*, void* value) { static_cast<App*>(value)->saveSettings(); }, this);
         cancelButton->callback([](Fl_Widget*, void* value) { static_cast<App*>(value)->settingsWindow_->hide(); }, this);
         settingsWindow_->callback([](Fl_Widget*, void* value) { static_cast<App*>(value)->settingsWindow_->hide(); }, this);

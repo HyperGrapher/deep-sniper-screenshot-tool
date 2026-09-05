@@ -12,6 +12,10 @@ target_link_libraries(DeepSniperTests PRIVATE
 include(Catch)
 catch_discover_tests(DeepSniperTests)
 
+# Run explicitly against a disposable app instance on an interactive desktop.
+add_executable(DeepSniperUiSmoke ui_smoke.cpp)
+target_link_libraries(DeepSniperUiSmoke PRIVATE deep_sniper_core)
+
 add_executable(DeepSniperOverlayTests
     overlay_tests.cpp
     ../src/overlay.cpp

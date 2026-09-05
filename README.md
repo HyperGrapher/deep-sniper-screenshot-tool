@@ -45,13 +45,29 @@ visible, outline pixels, and captured crop dimensions and pixel content. It
 restores the window placement afterward. Close Deep Sniper's Capture Mode and
 avoid interacting with the desktop while either visual test is running.
 
+The opt-in native UI smoke test accepts a disposable running Deep Sniper PID:
+
+```powershell
+.\build\tests\Release\DeepSniperUiSmoke.exe 12345 build\ui-preview
+```
+
+It temporarily moves the cursor, opens Settings, captures a generated test
+window, and discards that capture. It verifies centering, the frameless toolbar,
+and Escape, and writes `settings.png` and `capture-toolbar.png` for visual review.
+It does not save preferences, write an app capture to the default folder, or
+change the clipboard. This test is not included in unattended CTest runs.
+
 ## Use
 
 Deep Sniper starts in the notification area. Left-click its icon, choose
 **Start Capture** from its menu, or press the configured global hotkey. Move
 the pointer over a target and left-click to capture it. Escape cancels.
 
-After capture, choose **Save default**, **Save As**, **Copy**, or **Cancel**.
+After capture, a frameless icon toolbar offers **Save default**, **Save As**,
+**Copy**, and **Discard**, from left to right. Hover an icon for its tooltip.
+Keyboard equivalents are Ctrl+S, Ctrl+Shift+S, Ctrl+C, and Escape. Tab and Space
+also operate the buttons. Settings opens centered on the current screen with
+separate output and capture-shortcut sections in a dark theme.
 PNG and JPEG are supported. Settings are stored in
 `%LOCALAPPDATA%\DeepSniper\settings.json`; logs are stored beside them under
 `logs`.
