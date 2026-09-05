@@ -268,12 +268,17 @@ public:
             cancelCapture();
             return;
         }
+        // Commit the target from the displayed frame before another hover/UIA
+        // result can change it underneath the selection click.
+        if (inputHook_.takeSelectionRequest()) {
+            if (currentTarget_.has_value()) {
+                captureCurrentTarget();
+            }
+            return;
+        }
         POINT cursor{};
         GetCursorPos(&cursor);
         updateTarget(cursor);
-        if (inputHook_.takeSelectionRequest() && currentTarget_.has_value()) {
-            captureCurrentTarget();
-        }
     }
 
     void startCapture() {
@@ -333,6 +338,8 @@ private:
     HWND currentBrowserWindow_{};
     POINT lastBrowserPoint_{-1, -1};
     std::uint64_t currentBrowserGeneration_{};
+    PixelRect lastBrowserWindowBounds_{};
+    std::optional<PixelRect> currentBrowserBounds_;
     std::chrono::steady_clock::time_point browserRequestStarted_{};
     CaptureSessionState sessionState_;
     bool isRunning_{true};
@@ -356,25 +363,43 @@ private:
             return;
         }
 
-        const bool queryChanged = currentBrowserWindow_ != windowTarget->window || cursor.x != lastBrowserPoint_.x || cursor.y != lastBrowserPoint_.y;
-        if (queryChanged) {
-            currentBrowserWindow_ = windowTarget->window;
-            lastBrowserPoint_ = cursor;
-            currentBrowserGeneration_ = browserDetector_.submit(windowTarget->window, cursor);
-            browserRequestStarted_ = std::chrono::steady_clock::now();
-        }
-        currentTarget_ = windowTarget;
-        bool isPending = true;
+        const auto now = std::chrono::steady_clock::now();
+        const bool windowChanged = currentBrowserWindow_ != windowTarget->window ||
+                                   lastBrowserWindowBounds_ != windowTarget->windowBounds;
         const auto detection = browserDetector_.latestResult();
-        if (detection.has_value() && isCurrentBrowserDetection(*detection, currentBrowserGeneration_, windowTarget->window)) {
-            isPending = false;
+        const bool hasResult = !windowChanged && detection.has_value() &&
+                               isCurrentBrowserDetection(*detection, currentBrowserGeneration_, windowTarget->window);
+        if (windowChanged) {
+            currentBrowserBounds_.reset();
+        } else if (hasResult) {
+            currentBrowserBounds_.reset();
             if (detection->bounds.has_value()) {
                 const PixelRect clipped = intersectRect(*detection->bounds, windowTarget->windowBounds);
                 if (!clipped.isEmpty()) {
-                    currentTarget_ = CaptureTarget{CaptureTargetKind::BrowserElement, windowTarget->window, windowTarget->windowBounds, clipped};
+                    currentBrowserBounds_ = clipped;
                 }
             }
-        } else if (std::chrono::steady_clock::now() - browserRequestStarted_ > std::chrono::seconds{2}) {
+        }
+
+        const bool pointerMoved = cursor.x != lastBrowserPoint_.x || cursor.y != lastBrowserPoint_.y;
+        // Let an in-flight query finish before replacing its generation. Retry
+        // stationary points too, because accessibility can become ready later
+        // and scrolling can change the element without moving the cursor.
+        if (windowChanged || (hasResult &&
+            (pointerMoved || now - browserRequestStarted_ >= std::chrono::milliseconds{150}))) {
+            currentBrowserWindow_ = windowTarget->window;
+            lastBrowserWindowBounds_ = windowTarget->windowBounds;
+            lastBrowserPoint_ = cursor;
+            currentBrowserGeneration_ = browserDetector_.submit(windowTarget->window, cursor);
+            browserRequestStarted_ = now;
+        }
+        currentTarget_ = windowTarget;
+        bool isPending = !hasResult && now - browserRequestStarted_ < std::chrono::seconds{2};
+        if (currentBrowserBounds_.has_value() && cursor.x >= currentBrowserBounds_->left &&
+            cursor.x < currentBrowserBounds_->right && cursor.y >= currentBrowserBounds_->top &&
+            cursor.y < currentBrowserBounds_->bottom) {
+            currentTarget_ = CaptureTarget{CaptureTargetKind::BrowserElement, windowTarget->window,
+                                           windowTarget->windowBounds, *currentBrowserBounds_};
             isPending = false;
         }
         overlay_.updateHighlight(currentTarget_->captureBounds, isPending);

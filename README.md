@@ -24,6 +24,27 @@ ctest --preset release
 
 The executable is written to `build\Release\DeepSniper.exe`.
 
+## Regression tests
+
+The default CTest suite includes a desktop test that creates temporary windows
+and checks UI Automation hit-testing, dimming, the undimmed selection, and the
+outline across repeated Capture Mode sessions. Run it on an unlocked Windows
+desktop; exclude it with `ctest --preset release -LE desktop` on headless agents.
+
+For the opt-in real-browser test, open `tests/fixtures/browser-capture.html` in
+a separate supported-browser window, then set its main browser process ID:
+
+```powershell
+$env:DEEP_SNIPER_BROWSER_PROCESS = '12345' # Replace with the browser PID, not a renderer PID.
+.\build\tests\Release\DeepSniperOverlayTests.exe '[.browser]'
+```
+
+The test temporarily positions that fixture window on the primary monitor and
+checks both a page button and an iframe button: UIA bounds while overlays are
+visible, outline pixels, and captured crop dimensions and pixel content. It
+restores the window placement afterward. Close Deep Sniper's Capture Mode and
+avoid interacting with the desktop while either visual test is running.
+
 ## Use
 
 Deep Sniper starts in the notification area. Left-click its icon, choose

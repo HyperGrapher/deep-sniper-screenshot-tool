@@ -85,9 +85,13 @@ std::optional<BrowserDetectionResult> BrowserElementDetector::latestResult() con
 
 void BrowserElementDetector::run(std::stop_token stopToken) {
     const HRESULT comResult = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    ComPtr<IUIAutomation> automation;
+    ComPtr<IUIAutomation2> automation;
     if (SUCCEEDED(comResult)) {
-        CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation));
+        CoCreateInstance(CLSID_CUIAutomation8, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation));
+        if (automation != nullptr) {
+            automation->put_ConnectionTimeout(2000);
+            automation->put_TransactionTimeout(2000);
+        }
     }
 
     std::uint64_t processedGeneration{};
@@ -107,13 +111,18 @@ void BrowserElementDetector::run(std::stop_token stopToken) {
             ComPtr<IUIAutomationElement> element;
             if (SUCCEEDED(automation->ElementFromPoint(query.point, &element)) && element != nullptr) {
                 bool belongsToDocument = false;
+                bool belongsToWindow = false;
                 ComPtr<IUIAutomationTreeWalker> walker;
-                automation->get_ControlViewWalker(&walker);
+                automation->get_RawViewWalker(&walker);
                 ComPtr<IUIAutomationElement> ancestor = element;
-                for (int depth = 0; depth < 32 && ancestor != nullptr; ++depth) {
+                for (int depth = 0; depth < 128 && ancestor != nullptr; ++depth) {
                     CONTROLTYPEID controlType{};
                     if (SUCCEEDED(ancestor->get_CurrentControlType(&controlType)) && controlType == UIA_DocumentControlTypeId) {
                         belongsToDocument = true;
+                    }
+                    UIA_HWND nativeWindow{};
+                    if (SUCCEEDED(ancestor->get_CurrentNativeWindowHandle(&nativeWindow)) && nativeWindow == query.window) {
+                        belongsToWindow = true;
                         break;
                     }
                     ComPtr<IUIAutomationElement> parent;
@@ -123,7 +132,10 @@ void BrowserElementDetector::run(std::stop_token stopToken) {
                     ancestor = std::move(parent);
                 }
                 RECT bounds{};
-                if (belongsToDocument && SUCCEEDED(element->get_CurrentBoundingRectangle(&bounds))) {
+                BOOL isOffscreen = TRUE;
+                if (belongsToDocument && belongsToWindow &&
+                    SUCCEEDED(element->get_CurrentIsOffscreen(&isOffscreen)) && !isOffscreen &&
+                    SUCCEEDED(element->get_CurrentBoundingRectangle(&bounds)) && PtInRect(&bounds, query.point)) {
                     const PixelRect pixelBounds{bounds.left, bounds.top, bounds.right, bounds.bottom};
                     if (!pixelBounds.isEmpty()) {
                         detection.bounds = pixelBounds;
@@ -137,6 +149,7 @@ void BrowserElementDetector::run(std::stop_token stopToken) {
         }
         processedGeneration = query.generation;
     }
+    automation.Reset();
     if (SUCCEEDED(comResult)) {
         CoUninitialize();
     }

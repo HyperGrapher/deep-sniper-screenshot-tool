@@ -11,3 +11,15 @@ target_link_libraries(DeepSniperTests PRIVATE
 
 include(Catch)
 catch_discover_tests(DeepSniperTests)
+
+add_executable(DeepSniperOverlayTests
+    overlay_tests.cpp
+    ../src/overlay.cpp
+)
+target_link_libraries(DeepSniperOverlayTests PRIVATE
+    Catch2::Catch2WithMain
+    deep_sniper_core
+    SDL3::SDL3
+)
+catch_discover_tests(DeepSniperOverlayTests TEST_SPEC "~[.browser]"
+    PROPERTIES LABELS desktop TIMEOUT 20 RUN_SERIAL TRUE)

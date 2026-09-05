@@ -61,6 +61,41 @@ separately and are never implied by a completed implementation stage.
 - [x] Document expected UIA, protected-content, elevation, and monitor limits.
 - [x] Complete a clean Release build, CTest run, and application smoke test.
 
+## Corrections
+
+- [x] Fix SDL transparent-backbuffer presentation so Capture Mode visibly dims
+      the desktop, leaves the selected rectangle undimmed, and draws its
+      green or amber outline.
+- [x] Restore cross-process UIA hit-testing through the visible overlays by
+      retaining `WS_EX_LAYERED | WS_EX_TRANSPARENT` and initializing layered
+      opacity with `SetLayeredWindowAttributes`. Removing the layered style
+      made outlines visible but caused UIA to hit the overlay, not page elements.
+- [x] Reapply layered state and topmost order to both reused overlay windows
+      on every Capture Mode session, preserving the dim layer after hide/show.
+- [x] Serialize browser hover requests, retry stationary points during UIA
+      warm-up/scrolling, and retain a valid element highlight during refresh.
+      Invalidate cached bounds when the browser window or its geometry changes.
+- [x] Validate that UIA targets belong to the requested browser's document tree,
+      are onscreen, and contain the queried point. Set UIA provider timeouts.
+- [x] Capture the displayed target before updating hover state on a selection
+      click, so the saved crop matches the outline the user chose.
+- [x] Add a desktop regression test for UIA pass-through and overlay pixels
+      across hide/show cycles, plus an opt-in real-browser page/iframe test.
+
+### Browser-overlay verification (2026-09-05)
+
+- The desktop regression test reproduced the UIA failure with the previous
+  non-layered overlay; it passes with initialized layered transparency.
+- A Release build and the 15-test CTest suite pass. The desktop regression
+  additionally passed 10 consecutive runs (two Capture Mode sessions per run).
+- The opt-in browser test passes against Vivaldi using a separate test profile,
+  without forcing renderer accessibility: page and iframe buttons resolve to
+  their own UIA bounds while overlays are visible, show a green outline, and
+  capture matching dimensions and undimmed pixel content.
+- Chrome, Brave, Firefox, alternate DPI settings, and the full interactive
+  save/copy workflow still require the manual acceptance checks below. See the
+  README for regression-test commands.
+
 ## Manual acceptance
 
 - [ ] Tray left-click, tray menu, and Print Screen enter Capture Mode.
