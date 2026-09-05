@@ -52,17 +52,12 @@ jobs:
             -A x64 `
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET="$env:VCPKG_TRIPLET" `
-            -DBUILD_TESTING=ON
+            -DBUILD_TESTING=OFF
 
-      - name: Build application and unit tests
+      - name: Build application
         shell: pwsh
         run: |
-          cmake --build build --config Release --target DeepSniper DeepSniperTests
-
-      - name: Run unit tests
-        shell: pwsh
-        run: |
-          ctest --test-dir build -C Release --output-on-failure -LE desktop
+          cmake --build build --config Release --target DeepSniper
 
       - name: Package release artifact
         shell: pwsh

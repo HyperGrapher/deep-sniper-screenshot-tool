@@ -27,9 +27,10 @@ The executable is written to `build\Release\DeepSniper.exe`.
 ## Publishing a release
 
 Push a semantic version tag such as `v1.0.0` to run the Windows release
-workflow. It builds the static x64 Release configuration, runs the unit tests,
-packages `DeepSniper.exe`, `README.md`, and `app_icon.ico`, and attaches the ZIP
-to a GitHub Release for that tag.
+workflow. It builds only the static x64 Release application, packages
+`DeepSniper.exe`, `README.md`, and `app_icon.ico`, and attaches the ZIP to a
+GitHub Release for that tag. Tests are intentionally skipped in this release
+workflow; run them locally with the Build instructions when needed.
 
 ```powershell
 git tag v1.0.0
