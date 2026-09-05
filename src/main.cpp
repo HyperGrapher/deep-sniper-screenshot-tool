@@ -123,6 +123,34 @@ Fl_Box* addLabel(int x, int y, int width, int height, const char* text, Fl_Color
     return label;
 }
 
+void configureDarkTitleBar(Fl_Window& window) {
+    const HWND nativeWindow = fl_xid(&window);
+    if (nativeWindow == nullptr) {
+        return;
+    }
+    const BOOL useDarkTitleBar = TRUE;
+    const HRESULT result = DwmSetWindowAttribute(nativeWindow, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                                                 &useDarkTitleBar, sizeof(useDarkTitleBar));
+    if (FAILED(result)) {
+        spdlog::warn("Unable to enable dark Settings title bar: HRESULT 0x{:08X}",
+                     static_cast<unsigned long>(result));
+    }
+}
+
+class SettingsWindow final : public Fl_Double_Window {
+public:
+    using Fl_Double_Window::Fl_Double_Window;
+
+    int handle(int event) override {
+        // FLTK's Windows driver sends FL_SHOW after creating the HWND and
+        // before ShowWindow. hide() destroys that HWND, so theme every new one.
+        if (event == FL_SHOW) {
+            configureDarkTitleBar(*this);
+        }
+        return Fl_Double_Window::handle(event);
+    }
+};
+
 class InstanceMutex final {
 public:
     InstanceMutex() {
@@ -488,14 +516,11 @@ private:
         settingsWindow_->position(screenX + (screenWidth - settingsWindow_->w()) / 2,
                                   screenY + (screenHeight - settingsWindow_->h()) / 2);
         settingsWindow_->show();
-        const BOOL useDarkTitleBar = TRUE;
-        DwmSetWindowAttribute(fl_xid(settingsWindow_.get()), DWMWA_USE_IMMERSIVE_DARK_MODE,
-                              &useDarkTitleBar, sizeof(useDarkTitleBar));
         settingsWindow_->take_focus();
     }
 
     void buildSettingsWindow() {
-        settingsWindow_ = std::make_unique<Fl_Double_Window>(600, 510, "Deep Sniper Settings");
+        settingsWindow_ = std::make_unique<SettingsWindow>(600, 510, "Deep Sniper Settings");
         settingsWindow_->color(kBackground);
         settingsWindow_->begin();
         addLabel(28, 18, 544, 18, "DEEP SNIPER", kMuted)->labelsize(11);
@@ -548,6 +573,7 @@ private:
         cancelButton->callback([](Fl_Widget*, void* value) { static_cast<App*>(value)->settingsWindow_->hide(); }, this);
         settingsWindow_->callback([](Fl_Widget*, void* value) { static_cast<App*>(value)->settingsWindow_->hide(); }, this);
         settingsWindow_->end();
+
     }
 
     void browseFolder() {

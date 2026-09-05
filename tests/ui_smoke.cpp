@@ -31,16 +31,20 @@ void pumpFor(std::chrono::milliseconds duration) {
     } while (std::chrono::steady_clock::now() < deadline);
 }
 
+COLORREF screenPixel(POINT point) {
+    HDC screen = GetDC(nullptr);
+    const COLORREF pixel = GetPixel(screen, point.x, point.y);
+    ReleaseDC(nullptr, screen);
+    return pixel;
+}
+
 HWND waitForWindow(const wchar_t* title, DWORD processId) {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
     do {
         const HWND window = FindWindowW(nullptr, title);
         DWORD owner{};
         GetWindowThreadProcessId(window, &owner);
-        if (owner == processId) {
-            // The smoke-test app is launched hidden by its supervising shell.
-            // Windows can apply that startup flag to its first settings window.
-            ShowWindow(window, SW_SHOWNORMAL);
+        if (owner == processId && IsWindowVisible(window)) {
             return window;
         }
         pumpFor(std::chrono::milliseconds{20});
@@ -69,24 +73,67 @@ struct CursorRestorer {
     ~CursorRestorer() { SetCursorPos(position.x, position.y); }
 };
 
+class TestApp final {
+public:
+    explicit TestApp(const std::filesystem::path& executable) {
+        require(FindWindowW(kTrayWindowClass, kApplicationName) == nullptr,
+                "Close Deep Sniper before running this test.");
+        STARTUPINFOW startup{sizeof(STARTUPINFOW)};
+        startup.dwFlags = STARTF_USESHOWWINDOW;
+        startup.wShowWindow = SW_SHOWNORMAL;
+        require(CreateProcessW(executable.c_str(), nullptr, nullptr, nullptr, FALSE, 0,
+                               nullptr, nullptr, &startup, &process_), "Cannot launch test app.");
+    }
+    ~TestApp() {
+        TerminateProcess(process_.hProcess, 0);
+        CloseHandle(process_.hThread);
+        CloseHandle(process_.hProcess);
+    }
+    DWORD processId() const { return process_.dwProcessId; }
+private:
+    PROCESS_INFORMATION process_{};
+};
+
+void checkTitleBar(HWND settings) {
+    // Let DWM present the window without changing its visibility or focus.
+    // Sampling immediately after HWND creation can read the desktop behind it.
+    pumpFor(std::chrono::milliseconds{300});
+    require(IsWindowVisible(settings) && GetForegroundWindow() == settings,
+            "Settings must be visible and active for the title-bar check.");
+    RECT bounds{};
+    require(GetWindowRect(settings, &bounds), "Cannot read Settings bounds.");
+    const COLORREF titlePixel = screenPixel({(bounds.left + bounds.right) / 2, bounds.top + 12});
+    require(titlePixel != CLR_INVALID, "Cannot sample Settings title bar.");
+    std::cout << "Active title RGB: " << static_cast<int>(GetRValue(titlePixel)) << ','
+              << static_cast<int>(GetGValue(titlePixel)) << ',' << static_cast<int>(GetBValue(titlePixel)) << '\n';
+    require(GetRValue(titlePixel) < 100 && GetGValue(titlePixel) < 100 && GetBValue(titlePixel) < 100,
+            "Settings title bar is not dark on first presentation.");
 }
 
-// Explicit, interactive smoke test: supply a disposable running app's PID and
+}
+
+// Explicit, interactive smoke test: supply the application executable and
 // an output directory. It does not save settings, screenshots, or the clipboard
 // through the app; only UI preview PNGs are written to the supplied directory.
 int main(int argumentCount, char** arguments) {
     if (argumentCount != 3) {
-        std::cerr << "Usage: DeepSniperUiSmoke <app-pid> <preview-directory>\n";
+        std::cerr << "Usage: DeepSniperUiSmoke <app-executable> <preview-directory>\n";
         return 2;
     }
     SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     const HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     int result = 0;
     try {
-        const DWORD processId = std::stoul(arguments[1]);
+        const TestApp app{std::filesystem::absolute(arguments[1])};
+        const DWORD processId = app.processId();
         const std::filesystem::path output{arguments[2]};
         std::filesystem::create_directories(output);
-        const HWND tray = FindWindowW(kTrayWindowClass, kApplicationName);
+        HWND tray{};
+        const auto startupDeadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+        do {
+            tray = FindWindowW(kTrayWindowClass, kApplicationName);
+            pumpFor(std::chrono::milliseconds{20});
+        } while (tray == nullptr && std::chrono::steady_clock::now() < startupDeadline);
         DWORD owner{};
         GetWindowThreadProcessId(tray, &owner);
         require(owner == processId, "The running app does not match the supplied PID.");
@@ -100,10 +147,18 @@ int main(int argumentCount, char** arguments) {
                 "Settings are not horizontally centered.");
         require(std::abs((bounds.top + bounds.bottom) - (monitor.rcWork.top + monitor.rcWork.bottom)) < 80,
                 "Settings are not vertically centered.");
+        checkTitleBar(settings);
         saveWindow(settings, output / "settings.png");
         PostMessageW(settings, WM_CLOSE, 0, 0);
         pumpFor(std::chrono::milliseconds{150});
         require(!IsWindowVisible(settings), "Settings did not close.");
+
+        PostMessageW(tray, kActivateExistingInstanceMessage, 0, 0);
+        const HWND reopenedSettings = waitForWindow(L"Deep Sniper Settings", processId);
+        checkTitleBar(reopenedSettings);
+        PostMessageW(reopenedSettings, WM_CLOSE, 0, 0);
+        pumpFor(std::chrono::milliseconds{150});
+        require(!IsWindowVisible(reopenedSettings), "Reopened Settings did not close.");
 
         std::unique_ptr<std::remove_pointer_t<HWND>, WindowCloser> fixture{CreateWindowExW(
             WS_EX_TOPMOST | WS_EX_TOOLWINDOW, L"STATIC", L"Deep Sniper UI test target",

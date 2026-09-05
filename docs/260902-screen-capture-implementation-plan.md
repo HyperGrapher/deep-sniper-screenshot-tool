@@ -109,6 +109,13 @@ separately and are never implied by a completed implementation stage.
       where Windows supports it. Keep PNG/JPEG and existing settings behavior.
 - [x] Center Settings in the current screen's usable area each time it opens
       (the tray application has no main window to center it within).
+- [x] Apply the dark DWM attribute in Settings' `FL_SHOW` handler, after HWND
+      creation and before native `ShowWindow`. FLTK destroys the HWND on hide;
+      theme each replacement HWND. Remove the ineffective offscreen prewarm,
+      post-show refreshes, and caption-color overrides.
+- [x] Correct the UI smoke test to launch a fresh app and wait for a visible,
+      active Settings window before sampling its rendered title bar. Verify
+      first open and reopen without test-driven `ShowWindow` or focus changes.
 - [x] Build Release, pass all 15 CTest tests, and run the opt-in native UI smoke
       test against the real application. Verify centering, no toolbar caption
       or resize frame, and Escape discarding a fixture capture. Inspect both

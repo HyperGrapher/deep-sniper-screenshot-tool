@@ -45,14 +45,16 @@ visible, outline pixels, and captured crop dimensions and pixel content. It
 restores the window placement afterward. Close Deep Sniper's Capture Mode and
 avoid interacting with the desktop while either visual test is running.
 
-The opt-in native UI smoke test accepts a disposable running Deep Sniper PID:
+Close Deep Sniper before running the opt-in native UI smoke test. It launches
+and cleans up its own fresh app instance:
 
 ```powershell
-.\build\tests\Release\DeepSniperUiSmoke.exe 12345 build\ui-preview
+.\build\tests\Release\DeepSniperUiSmoke.exe build\Release\DeepSniper.exe build\ui-preview
 ```
 
 It temporarily moves the cursor, opens Settings, captures a generated test
-window, and discards that capture. It verifies centering, the frameless toolbar,
+window, and discards that capture. It verifies the active dark title bar on first
+open and reopen without forcing focus or visibility, centering, the frameless toolbar,
 and Escape, and writes `settings.png` and `capture-toolbar.png` for visual review.
 It does not save preferences, write an app capture to the default folder, or
 change the clipboard. This test is not included in unattended CTest runs.
