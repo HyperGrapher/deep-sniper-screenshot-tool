@@ -24,6 +24,20 @@ ctest --preset release
 
 The executable is written to `build\Release\DeepSniper.exe`.
 
+## Publishing a release
+
+Push a semantic version tag such as `v1.0.0` to run the Windows release
+workflow. It builds the static x64 Release configuration, runs the unit tests,
+packages `DeepSniper.exe`, `README.md`, and `app_icon.ico`, and attaches the ZIP
+to a GitHub Release for that tag.
+
+```powershell
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The workflow is defined in [`.github/workflows/release.yml`](.github/workflows/release.yml).
+
 ## Regression tests
 
 The default CTest suite includes a desktop test that creates temporary windows

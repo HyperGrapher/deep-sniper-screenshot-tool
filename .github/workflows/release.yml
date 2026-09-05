@@ -1,0 +1,88 @@
+name: Windows Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish Windows release
+    runs-on: windows-2022
+
+    env:
+      VCPKG_TRIPLET: x64-windows-static
+      VCPKG_COMMIT: 39344dff01c5a5a0134caf2624cdd492f05d30ea
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Set up vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: '${{ runner.temp }}/vcpkg'
+          vcpkgGitCommitId: '${{ env.VCPKG_COMMIT }}'
+
+      - name: Export vcpkg environment
+        shell: pwsh
+        run: |
+          "VCPKG_ROOT=${{ runner.temp }}\vcpkg" >> $env:GITHUB_ENV
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_ROOT\vcpkg.exe" install `
+            --triplet "$env:VCPKG_TRIPLET" `
+            --x-manifest-root "${{ github.workspace }}"
+
+      - name: Configure Release build
+        shell: pwsh
+        run: |
+          cmake -S . -B build `
+            -G "Visual Studio 17 2022" `
+            -A x64 `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET="$env:VCPKG_TRIPLET" `
+            -DBUILD_TESTING=ON
+
+      - name: Build application and unit tests
+        shell: pwsh
+        run: |
+          cmake --build build --config Release --target DeepSniper DeepSniperTests
+
+      - name: Run unit tests
+        shell: pwsh
+        run: |
+          ctest --test-dir build -C Release --output-on-failure -LE desktop
+
+      - name: Package release artifact
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}"
+          $packageName = "DeepSniper-$version-windows-x64"
+          $packageDirectory = Join-Path $env:RUNNER_TEMP $packageName
+          New-Item -ItemType Directory -Force $packageDirectory | Out-Null
+          Copy-Item build\Release\DeepSniper.exe $packageDirectory
+          Copy-Item README.md $packageDirectory
+          Copy-Item app_icon.ico $packageDirectory
+          $archivePath = Join-Path $env:GITHUB_WORKSPACE "$packageName.zip"
+          Compress-Archive -Path "$packageDirectory\*" -DestinationPath $archivePath -Force
+          "RELEASE_ARCHIVE=$archivePath" >> $env:GITHUB_ENV
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Deep Sniper ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: ${{ env.RELEASE_ARCHIVE }}

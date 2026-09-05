@@ -124,6 +124,18 @@ separately and are never implied by a completed implementation stage.
 The UI smoke test does not exercise saving files, clipboard writes, or changing
 persisted settings; those remain part of the acceptance checklist below.
 
+## Release automation (2026-09-05)
+
+- [x] Add a Windows GitHub Actions workflow triggered by semantic version tags
+      matching `v*.*.*`.
+- [x] Pin the repository's vcpkg baseline and static x64 triplet, configure the
+      Release build in `build`, compile the app and unit tests, and run CTest
+      while excluding the interactive desktop-only regression test.
+- [x] Package `DeepSniper.exe`, `README.md`, and `app_icon.ico` as a versioned
+      Windows x64 ZIP and publish it to the matching GitHub Release with generated
+      release notes.
+- [x] Document the tag/push command and release asset contents in the README.
+
 ## Manual acceptance
 
 - [ ] Tray left-click, tray menu, and Print Screen enter Capture Mode.
