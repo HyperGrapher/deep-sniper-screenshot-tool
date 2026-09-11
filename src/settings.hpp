@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 enum class ImageFormat {
     Png,
@@ -25,6 +26,9 @@ struct Settings {
     std::filesystem::path defaultSaveFolder;
     ImageFormat defaultFormat{ImageFormat::Png};
     Hotkey captureHotkey{};
+    std::uint32_t titleLength{25};
+    std::vector<std::filesystem::path> destinationFolders;
+    std::vector<std::filesystem::path> recentFolders;
 
     bool operator==(const Settings&) const = default;
 };

@@ -81,10 +81,30 @@ BOOL CALLBACK findWindowCallback(HWND window, LPARAM parameter) {
     return FALSE;
 }
 
-[[nodiscard]] std::wstring captureStem() {
+[[nodiscard]] std::wstring filenameSafeTitle(std::wstring_view title, std::uint32_t maximumLength) {
+    std::wstring result;
+    result.reserve(std::min<std::size_t>(title.size(), maximumLength));
+    for (const wchar_t character : title) {
+        if (result.size() == maximumLength) {
+            break;
+        }
+        if (character < 32 || std::wstring_view{L"<>:\\/?*\"|"}.find(character) != std::wstring_view::npos) {
+            continue;
+        }
+        result.push_back(character);
+    }
+    while (!result.empty() && (result.back() == L' ' || result.back() == L'.')) {
+        result.pop_back();
+    }
+    return result;
+}
+
+[[nodiscard]] std::wstring captureStem(std::wstring_view windowTitle, std::uint32_t titleLength) {
     const auto now = std::chrono::system_clock::now();
     const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
-    return std::format(L"DeepSniper_{:%Y%m%d_%H%M%S}_{:03}", now, milliseconds.count());
+    const std::wstring title = filenameSafeTitle(windowTitle, titleLength);
+    const std::wstring timestamp = std::format(L"{:%Y%m%d_%H%M%S}_{:03}", now, milliseconds.count());
+    return title.empty() ? L"DeepSniper_" + timestamp : title + L"_" + timestamp;
 }
 
 [[nodiscard]] std::string systemErrorMessage(DWORD error) {
@@ -363,12 +383,13 @@ bool copyImageToClipboard(const CapturedImage& image, std::string& errorMessage)
     return true;
 }
 
-std::filesystem::path defaultCapturePath(const Settings& settings) {
+std::filesystem::path defaultCapturePath(const Settings& settings, std::wstring_view windowTitle) {
     return collisionFreePath(
-        settings.defaultSaveFolder, captureStem(), imageFormatExtension(settings.defaultFormat));
+        settings.defaultSaveFolder, captureStem(windowTitle, settings.titleLength), imageFormatExtension(settings.defaultFormat));
 }
 
-std::optional<std::pair<std::filesystem::path, ImageFormat>> chooseSavePath(HWND owner, const Settings& settings) {
+std::optional<std::pair<std::filesystem::path, ImageFormat>> chooseSavePath(
+    HWND owner, const Settings& settings, std::wstring_view windowTitle) {
     ComPtr<IFileSaveDialog> dialog;
     if (FAILED(CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog)))) {
         return std::nullopt;
@@ -376,7 +397,7 @@ std::optional<std::pair<std::filesystem::path, ImageFormat>> chooseSavePath(HWND
     const COMDLG_FILTERSPEC filters[]{{L"PNG image", L"*.png"}, {L"JPEG image", L"*.jpg;*.jpeg"}};
     dialog->SetFileTypes(static_cast<UINT>(std::size(filters)), filters);
     dialog->SetFileTypeIndex(settings.defaultFormat == ImageFormat::Png ? 1U : 2U);
-    const std::wstring suggested = captureStem() + imageFormatExtension(settings.defaultFormat);
+    const std::wstring suggested = captureStem(windowTitle, settings.titleLength) + imageFormatExtension(settings.defaultFormat);
     dialog->SetFileName(suggested.c_str());
     dialog->SetDefaultExtension(settings.defaultFormat == ImageFormat::Png ? L"png" : L"jpg");
     if (dialog->Show(owner) != S_OK) {

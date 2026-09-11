@@ -15,7 +15,7 @@ inline const Fl_Color kAccent = fl_rgb_color(107, 224, 190);
 inline const Fl_Color kDanger = fl_rgb_color(255, 139, 149);
 }
 
-enum class ButtonIcon { None, Save, SaveAs, Copy, Close, Folder };
+enum class ButtonIcon { None, Save, SaveAs, Copy, Close, Folder, Destination };
 
 class ThemedButton : public Fl_Button {
 public:

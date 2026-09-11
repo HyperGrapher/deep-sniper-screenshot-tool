@@ -4,6 +4,7 @@
 #include <shlobj.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cctype>
 #include <filesystem>
@@ -19,6 +20,7 @@
 #include <FL/Fl_Choice.H>
 #include <FL/Fl_Double_Window.H>
 #include <FL/Fl_Input.H>
+#include <FL/Fl_Scroll.H>
 #include <FL/Fl_Tooltip.H>
 #include <FL/fl_ask.H>
 #include <FL/platform.H>
@@ -68,6 +70,17 @@ class App;
     return result;
 }
 
+[[nodiscard]] std::wstring windowTitle(HWND window) {
+    const int length = GetWindowTextLengthW(window);
+    if (length <= 0) {
+        return {};
+    }
+    std::wstring title(static_cast<std::size_t>(length) + 1U, L'\0');
+    const int copied = GetWindowTextW(window, title.data(), static_cast<int>(title.size()));
+    title.resize(copied > 0 ? static_cast<std::size_t>(copied) : 0U);
+    return title;
+}
+
 [[nodiscard]] std::filesystem::path applicationDataDirectory() {
     PWSTR rawPath = nullptr;
     if (FAILED(SHGetKnownFolderPath(FOLDERID_LocalAppData, KF_FLAG_CREATE, nullptr, &rawPath))) {
@@ -82,7 +95,8 @@ class App;
 void configureLogging(const std::filesystem::path& dataDirectory) {
     const auto logDirectory = dataDirectory / L"logs";
     std::filesystem::create_directories(logDirectory);
-    auto logger = spdlog::rotating_logger_mt("application", (logDirectory / L"app.log").string(), 1024 * 1024, 3);
+    auto logger = spdlog::rotating_logger_mt(
+        "application", wideToUtf8((logDirectory / L"app.log").wstring()), 1024 * 1024, 3);
     spdlog::set_default_logger(std::move(logger));
     spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
     spdlog::flush_on(spdlog::level::info);
@@ -291,6 +305,15 @@ public:
     void tick() {
         SDL_Event event{};
         while (SDL_PollEvent(&event)) {}
+        if (sessionState_.value() == CaptureState::Reviewing && !destinationsShown_) {
+            int x{}, y{};
+            Fl::get_mouse(x, y);
+            if ((x >= reviewWindow_->x() + 64 && x < reviewWindow_->x() + 112 &&
+                 y >= reviewWindow_->y() + 8 && y < reviewWindow_->y() + 56) ||
+                Fl::focus() == saveAsButton_) {
+                showDestinations();
+            }
+        }
         if (sessionState_.value() != CaptureState::Selecting) {
             return;
         }
@@ -342,6 +365,7 @@ public:
         }
         currentTarget_.reset();
         capturedImage_.reset();
+        capturedWindowTitle_.clear();
         sessionState_.reset();
     }
     void cancelReview() {
@@ -361,10 +385,19 @@ private:
     std::unique_ptr<ReviewWindow> reviewWindow_;
     Fl_Input* folderInput_{};
     Fl_Choice* formatChoice_{};
+    Fl_Input* titleLengthInput_{};
+    std::array<Fl_Input*, 7> destinationInputs_{};
+    std::array<ThemedButton*, 7> destinationBrowseButtons_{};
+    ThemedButton* saveAsButton_{};
+    Fl_Scroll* destinationRow_{};
+    std::array<std::filesystem::path, 10> reviewFolders_{};
+    std::array<ThemedButton*, 10> destinationButtons_{};
+    bool destinationsShown_{};
     HotkeyButton* hotkeyButton_{};
     Fl_Box* hotkeyStatus_{};
     std::optional<CaptureTarget> currentTarget_;
     std::optional<CapturedImage> capturedImage_;
+    std::wstring capturedWindowTitle_;
     HWND currentBrowserWindow_{};
     POINT lastBrowserPoint_{-1, -1};
     std::uint64_t currentBrowserGeneration_{};
@@ -437,6 +470,7 @@ private:
 
     void captureCurrentTarget() {
         const CaptureTarget target = *currentTarget_;
+        capturedWindowTitle_ = windowTitle(target.window);
         inputHook_.remove();
         overlay_.hide();
         std::string error;
@@ -462,6 +496,7 @@ private:
             reviewWindow_->begin();
             auto* saveDefault = new ThemedButton(8, 8, 48, 48, "Save default", ButtonIcon::Save);
             auto* saveAs = new ThemedButton(64, 8, 48, 48, "Save As", ButtonIcon::SaveAs);
+            saveAsButton_ = saveAs;
             auto* copy = new ThemedButton(120, 8, 48, 48, "Copy", ButtonIcon::Copy);
             auto* divider = new Fl_Box(180, 20, 1, 24);
             divider->box(FL_FLAT_BOX);
@@ -484,6 +519,13 @@ private:
             reviewWindow_->callback([](Fl_Widget*, void* value) { static_cast<App*>(value)->cancelReview(); }, this);
             reviewWindow_->end();
         }
+        if (destinationRow_ != nullptr) {
+            reviewWindow_->remove(destinationRow_);
+            delete destinationRow_;
+            destinationRow_ = nullptr;
+        }
+        destinationsShown_ = false;
+        reviewWindow_->size(width, height);
         const PixelRect workArea = monitorWorkAreaFor(targetBounds);
         const int x = std::clamp(targetBounds.right - width, workArea.left, workArea.right - width);
         int y = targetBounds.bottom + 8;
@@ -496,6 +538,71 @@ private:
         reviewWindow_->take_focus();
     }
 
+    void showDestinations() {
+        destinationsShown_ = true;
+        const PixelRect workArea = monitorWorkAreaFor({reviewWindow_->x(), reviewWindow_->y(),
+            reviewWindow_->x() + 244, reviewWindow_->y() + 64});
+        const int configuredCount = static_cast<int>(settings_.destinationFolders.size());
+        const int recentCount = static_cast<int>(settings_.recentFolders.size());
+        const int configuredWidth = std::max(180, configuredCount * 112);
+        const int recentWidth = std::max(180, recentCount * 112);
+        const int width = std::min(configuredWidth + recentWidth + 40, workArea.width());
+        const int x = std::clamp(reviewWindow_->x(), workArea.left, workArea.right - width);
+        const int y = std::clamp(reviewWindow_->y(), workArea.top, workArea.bottom - 168);
+        reviewWindow_->resize(x, y, width, 168);
+        reviewWindow_->begin();
+        destinationRow_ = new Fl_Scroll(0, 64, width, 104);
+        destinationRow_->type(Fl_Scroll::HORIZONTAL);
+        destinationRow_->color(kPanel);
+        destinationRow_->begin();
+        addLabel(12, 68, configuredWidth, 18, "YOUR FOLDERS", kAccent)->labelsize(10);
+        const int recentX = configuredWidth + 28;
+        addLabel(recentX, 68, recentWidth, 18, "RECENT SAVE AS", kMuted)->labelsize(10);
+        auto* divider = new Fl_Box(configuredWidth + 18, 72, 1, 64);
+        divider->box(FL_FLAT_BOX);
+        divider->color(UiTheme::kBorder);
+        destinationButtons_.fill(nullptr);
+        int index = 0;
+        const auto addFolders = [&](const auto& folders, int startX) {
+            int column = 0;
+            for (const auto& folder : folders) {
+                reviewFolders_[index] = folder;
+                const std::string name = wideToUtf8(folder.filename().empty() ? folder.wstring() : folder.filename().wstring());
+                auto* button = new ThemedButton(startX + column * 112, 92, 104, 44, "", ButtonIcon::Destination);
+                button->copy_label(name.c_str());
+                button->labelsize(11);
+                button->copy_tooltip(wideToUtf8(folder.wstring()).c_str());
+                button->callback([](Fl_Widget* widget, void* value) {
+                    auto& app = *static_cast<App*>(value);
+                    const auto found = std::find(app.destinationButtons_.begin(), app.destinationButtons_.end(), widget);
+                    if (found != app.destinationButtons_.end()) {
+                        Settings destination = app.settings_;
+                        destination.defaultSaveFolder = app.reviewFolders_[found - app.destinationButtons_.begin()];
+                        const auto path = defaultCapturePath(destination, app.capturedWindowTitle_);
+                        if (!path.empty()) {
+                            app.saveCapturedImage(path, destination.defaultFormat);
+                        } else {
+                            app.reportError("Unable to find a free filename in this folder.");
+                        }
+                    }
+                }, this);
+                destinationButtons_[index++] = button;
+                ++column;
+            }
+        };
+        addFolders(settings_.destinationFolders, 12);
+        addFolders(settings_.recentFolders, recentX);
+        if (configuredCount == 0) {
+            addLabel(12, 92, 176, 44, "Add folders in Settings", kMuted);
+        }
+        if (recentCount == 0) {
+            addLabel(recentX, 92, 176, 44, "Save As folders appear here", kMuted);
+        }
+        destinationRow_->end();
+        reviewWindow_->end();
+        reviewWindow_->redraw();
+    }
+
     void showSettings() {
         if (sessionState_.value() != CaptureState::Idle) {
             return;
@@ -506,6 +613,11 @@ private:
         const std::string folder = wideToUtf8(settings_.defaultSaveFolder.wstring());
         folderInput_->value(folder.c_str());
         formatChoice_->value(settings_.defaultFormat == ImageFormat::Png ? 0 : 1);
+        titleLengthInput_->value(std::to_string(settings_.titleLength).c_str());
+        for (std::size_t index = 0; index < destinationInputs_.size(); ++index) {
+            destinationInputs_[index]->value(index < settings_.destinationFolders.size()
+                ? wideToUtf8(settings_.destinationFolders[index].wstring()).c_str() : "");
+        }
         hotkeyButton_->setHotkey(settings_.captureHotkey);
         updateHotkeyStatus();
         int mouseX{}, mouseY{}, screenX{}, screenY{}, screenWidth{}, screenHeight{};
@@ -520,15 +632,39 @@ private:
     }
 
     void buildSettingsWindow() {
-        settingsWindow_ = std::make_unique<SettingsWindow>(600, 510, "Deep Sniper Settings");
+        settingsWindow_ = std::make_unique<SettingsWindow>(1000, 590, "Deep Sniper Settings");
         settingsWindow_->color(kBackground);
         settingsWindow_->begin();
+        auto* destinationsPanel = new Fl_Box(600, 120, 376, 380);
+        destinationsPanel->box(FL_FLAT_BOX);
+        destinationsPanel->color(kPanel);
+        addLabel(620, 136, 336, 22, "Quick-save folders")->labelfont(FL_HELVETICA_BOLD);
+        addLabel(620, 162, 336, 34, "Choose up to 7 destinations. Clear a field to remove it.", kMuted);
+        for (std::size_t index = 0; index < destinationInputs_.size(); ++index) {
+            const int y = 206 + static_cast<int>(index) * 40;
+            destinationInputs_[index] = new Fl_Input(620, y, 286, 30);
+            destinationInputs_[index]->box(FL_FLAT_BOX);
+            destinationInputs_[index]->color(UiTheme::kControl);
+            destinationInputs_[index]->textcolor(kText);
+            destinationInputs_[index]->textsize(12);
+            auto* browse = new ThemedButton(916, y, 40, 30, "Choose folder", ButtonIcon::Folder);
+            browse->tooltip("Choose quick-save folder");
+            destinationBrowseButtons_[index] = browse;
+            browse->callback([](Fl_Widget* widget, void* value) {
+                auto& app = *static_cast<App*>(value);
+                const auto found = std::find(app.destinationBrowseButtons_.begin(), app.destinationBrowseButtons_.end(), widget);
+                const auto folder = chooseFolder(fl_xid(app.settingsWindow_.get()));
+                if (folder && found != app.destinationBrowseButtons_.end()) {
+                    app.destinationInputs_[found - app.destinationBrowseButtons_.begin()]->value(wideToUtf8(folder->wstring()).c_str());
+                }
+            }, this);
+        }
         addLabel(28, 18, 544, 18, "DEEP SNIPER", kMuted)->labelsize(11);
         auto* heading = addLabel(28, 42, 544, 32, "Settings");
         heading->labelsize(26);
         heading->labelfont(FL_HELVETICA_BOLD);
         addLabel(28, 82, 544, 20, "Your captures, saved your way.", kMuted)->labelsize(13);
-        for (const PixelRect card : {PixelRect{24, 120, 576, 294}, PixelRect{24, 310, 576, 420}}) {
+        for (const PixelRect card : {PixelRect{24, 120, 576, 374}, PixelRect{24, 390, 576, 500}}) {
             auto* panel = new Fl_Box(card.left, card.top, card.width(), card.height());
             panel->box(FL_FLAT_BOX);
             panel->color(kPanel);
@@ -560,13 +696,21 @@ private:
         formatChoice_->tooltip("Default image format");
         formatChoice_->add("PNG");
         formatChoice_->add("JPEG");
-        addLabel(44, 328, 236, 20, "Capture shortcut")->labelfont(FL_HELVETICA_BOLD);
-        addLabel(44, 352, 236, 18, "Click the key to record a shortcut.", kMuted);
-        hotkeyButton_ = new HotkeyButton(300, 328, 252, 42);
+        addLabel(44, 300, 300, 20, "Title characters in filename")->labelfont(FL_HELVETICA_BOLD);
+        addLabel(44, 324, 380, 18, "The page or window title is followed by the timestamp.", kMuted);
+        titleLengthInput_ = new Fl_Input(452, 300, 100, 40);
+        titleLengthInput_->box(FL_FLAT_BOX);
+        titleLengthInput_->color(UiTheme::kControl);
+        titleLengthInput_->textcolor(kText);
+        titleLengthInput_->textsize(13);
+        titleLengthInput_->tooltip("Use between 1 and 200 title characters");
+        addLabel(44, 408, 236, 20, "Capture shortcut")->labelfont(FL_HELVETICA_BOLD);
+        addLabel(44, 432, 236, 18, "Click the key to record a shortcut.", kMuted);
+        hotkeyButton_ = new HotkeyButton(300, 408, 252, 42);
         hotkeyButton_->tooltip("Click, then press your preferred capture shortcut");
-        hotkeyStatus_ = addLabel(44, 384, 508, 20, "", kMuted);
-        auto* cancelButton = new ThemedButton(316, 448, 108, 38, "Cancel");
-        auto* saveButton = new ThemedButton(436, 448, 140, 38, "Save changes");
+        hotkeyStatus_ = addLabel(44, 464, 508, 20, "", kMuted);
+        auto* cancelButton = new ThemedButton(316, 528, 108, 38, "Cancel");
+        auto* saveButton = new ThemedButton(436, 528, 140, 38, "Save changes");
         saveButton->color(kAccent);
         saveButton->labelcolor(kBackground);
         saveButton->callback([](Fl_Widget*, void* value) { static_cast<App*>(value)->saveSettings(); }, this);
@@ -586,7 +730,20 @@ private:
 
     void saveSettings() {
         try {
-            Settings candidate{std::filesystem::path{utf8ToWide(folderInput_->value())}, formatChoice_->value() == 0 ? ImageFormat::Png : ImageFormat::Jpeg, hotkeyButton_->hotkey()};
+            const std::uint32_t titleLength = static_cast<std::uint32_t>(std::stoul(titleLengthInput_->value()));
+            Settings candidate{std::filesystem::path{utf8ToWide(folderInput_->value())}, formatChoice_->value() == 0 ? ImageFormat::Png : ImageFormat::Jpeg, hotkeyButton_->hotkey(), titleLength};
+            candidate.recentFolders = settings_.recentFolders;
+            for (const auto* input : destinationInputs_) {
+                if (input->value()[0] != '\0') {
+                    const std::filesystem::path folder{utf8ToWide(input->value())};
+                    if (!folder.is_absolute()) {
+                        throw std::runtime_error("Quick-save destinations must be absolute folder paths.");
+                    }
+                    if (std::find(candidate.destinationFolders.begin(), candidate.destinationFolders.end(), folder) == candidate.destinationFolders.end()) {
+                        candidate.destinationFolders.push_back(folder);
+                    }
+                }
+            }
             settingsStore_.save(candidate);
             settings_ = std::move(candidate);
             isHotkeyRegistered_ = tray_.registerCaptureHotkey(settings_.captureHotkey);
@@ -610,7 +767,7 @@ private:
     }
 
     void saveDefault() {
-        const std::filesystem::path path = defaultCapturePath(settings_);
+        const std::filesystem::path path = defaultCapturePath(settings_, capturedWindowTitle_);
         if (path.empty()) {
             reportError("Unable to find a free filename in the default folder.");
             return;
@@ -618,12 +775,12 @@ private:
         saveCapturedImage(path, settings_.defaultFormat);
     }
     void saveAs() {
-        const auto selection = chooseSavePath(reviewWindow_ == nullptr ? nullptr : fl_xid(reviewWindow_.get()), settings_);
+        const auto selection = chooseSavePath(reviewWindow_ == nullptr ? nullptr : fl_xid(reviewWindow_.get()), settings_, capturedWindowTitle_);
         if (selection.has_value()) {
-            saveCapturedImage(selection->first, selection->second);
+            saveCapturedImage(selection->first, selection->second, true);
         }
     }
-    void saveCapturedImage(const std::filesystem::path& path, ImageFormat format) {
+    void saveCapturedImage(const std::filesystem::path& path, ImageFormat format, bool rememberFolder = false) {
         if (!capturedImage_.has_value()) {
             return;
         }
@@ -633,7 +790,20 @@ private:
             return;
         }
         tray_.showNotification(L"Capture saved", path.c_str(), NIIF_INFO);
-        spdlog::info("Capture saved to {}", path.string());
+        if (rememberFolder) {
+            const auto folder = path.parent_path();
+            std::erase(settings_.recentFolders, folder);
+            settings_.recentFolders.insert(settings_.recentFolders.begin(), folder);
+            if (settings_.recentFolders.size() > 3) {
+                settings_.recentFolders.resize(3);
+            }
+            try {
+                settingsStore_.save(settings_);
+            } catch (const std::exception& error) {
+                spdlog::warn("Capture saved but recent folders could not be persisted: {}", error.what());
+            }
+        }
+        spdlog::info("Capture saved to {}", wideToUtf8(path.wstring()));
         cancelCapture();
     }
     void copyToClipboard() {

@@ -13,6 +13,7 @@
 namespace {
 
 constexpr std::uint32_t kAllowedModifierMask = MOD_ALT | MOD_CONTROL | MOD_SHIFT | MOD_WIN;
+constexpr std::uint32_t kMaximumTitleLength = 200;
 
 [[nodiscard]] std::string wideToUtf8(std::wstring_view value) {
     if (value.empty()) {
@@ -65,7 +66,7 @@ constexpr std::uint32_t kAllowedModifierMask = MOD_ALT | MOD_CONTROL | MOD_SHIFT
 }  // namespace
 
 Settings defaultSettings() {
-    return Settings{picturesFolder(), ImageFormat::Png, Hotkey{}};
+    return Settings{picturesFolder(), ImageFormat::Png, Hotkey{}, 25};
 }
 
 std::string imageFormatName(ImageFormat format) {
@@ -122,31 +123,56 @@ Settings SettingsStore::load() const {
     settings.defaultFormat = parseImageFormat(json.at("defaultFormat").get<std::string>());
     settings.captureHotkey.modifiers = json.at("hotkey").at("modifiers").get<std::uint32_t>();
     settings.captureHotkey.virtualKey = json.at("hotkey").at("virtualKey").get<std::uint32_t>();
+    settings.titleLength = json.value("titleLength", 25U);
+    for (const auto& folder : json.value("destinationFolders", nlohmann::json::array())) {
+        settings.destinationFolders.emplace_back(utf8ToWide(folder.get<std::string>()));
+    }
+    for (const auto& folder : json.value("recentFolders", nlohmann::json::array())) {
+        settings.recentFolders.emplace_back(utf8ToWide(folder.get<std::string>()));
+    }
+    if (settings.destinationFolders.size() > 7 || settings.recentFolders.size() > 3) {
+        throw std::runtime_error("Too many destination folders.");
+    }
 
     if (settings.defaultSaveFolder.empty() || settings.captureHotkey.virtualKey == 0U ||
-        (settings.captureHotkey.modifiers & ~kAllowedModifierMask) != 0U) {
+        (settings.captureHotkey.modifiers & ~kAllowedModifierMask) != 0U || settings.titleLength == 0U ||
+        settings.titleLength > kMaximumTitleLength) {
         throw std::runtime_error("Settings contain invalid values.");
     }
     return settings;
 }
 
 void SettingsStore::save(const Settings& settings) const {
+    if (settings.destinationFolders.size() > 7 || settings.recentFolders.size() > 3) {
+        throw std::runtime_error("Too many destination folders.");
+    }
     if (settings.defaultSaveFolder.empty() || settings.captureHotkey.virtualKey == 0U ||
-        (settings.captureHotkey.modifiers & ~kAllowedModifierMask) != 0U) {
+        (settings.captureHotkey.modifiers & ~kAllowedModifierMask) != 0U || settings.titleLength == 0U ||
+        settings.titleLength > kMaximumTitleLength) {
         throw std::runtime_error("Cannot save invalid settings.");
     }
 
     std::filesystem::create_directories(settingsPath_.parent_path());
     const auto temporaryPath = settingsPath_.wstring() + L".tmp";
-    const nlohmann::json json{
+    nlohmann::json json{
         {"defaultSaveFolder", wideToUtf8(settings.defaultSaveFolder.wstring())},
         {"defaultFormat", imageFormatName(settings.defaultFormat)},
+        {"titleLength", settings.titleLength},
         {"hotkey",
          {
              {"modifiers", settings.captureHotkey.modifiers},
              {"virtualKey", settings.captureHotkey.virtualKey},
          }},
     };
+
+    json["destinationFolders"] = nlohmann::json::array();
+    json["recentFolders"] = nlohmann::json::array();
+    for (const auto& folder : settings.destinationFolders) {
+        json["destinationFolders"].push_back(wideToUtf8(folder.wstring()));
+    }
+    for (const auto& folder : settings.recentFolders) {
+        json["recentFolders"].push_back(wideToUtf8(folder.wstring()));
+    }
 
     {
         std::ofstream stream{temporaryPath, std::ios::trunc};

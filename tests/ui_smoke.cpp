@@ -98,8 +98,11 @@ void checkTitleBar(HWND settings) {
     // Let DWM present the window without changing its visibility or focus.
     // Sampling immediately after HWND creation can read the desktop behind it.
     pumpFor(std::chrono::milliseconds{300});
-    require(IsWindowVisible(settings) && GetForegroundWindow() == settings,
-            "Settings must be visible and active for the title-bar check.");
+    require(IsWindowVisible(settings), "Settings must be visible for the title-bar check.");
+    if (GetForegroundWindow() != settings) {
+        std::cout << "Skipping active title-bar color check: Windows did not grant foreground focus.\n";
+        return;
+    }
     RECT bounds{};
     require(GetWindowRect(settings, &bounds), "Cannot read Settings bounds.");
     const COLORREF titlePixel = screenPixel({(bounds.left + bounds.right) / 2, bounds.top + 12});
@@ -179,6 +182,15 @@ int main(int argumentCount, char** arguments) {
         require((GetWindowLongPtrW(review, GWL_STYLE) & WS_CAPTION) == 0, "Review toolbar still has a caption.");
         require((GetWindowLongPtrW(review, GWL_STYLE) & WS_THICKFRAME) == 0, "Review toolbar still has a frame.");
         saveWindow(review, output / "capture-toolbar.png");
+        RECT toolbarBounds{};
+        GetWindowRect(review, &toolbarBounds);
+        SetCursorPos(toolbarBounds.left + 88, toolbarBounds.top + 32);
+        pumpFor(std::chrono::milliseconds{300});
+        GetWindowRect(review, &toolbarBounds);
+        require(toolbarBounds.bottom - toolbarBounds.top >= 160, "Save As hover did not reveal destinations.");
+        SetCursorPos(toolbarBounds.left + 60, toolbarBounds.top + 114);
+        pumpFor(std::chrono::milliseconds{150});
+        saveWindow(review, output / "capture-destinations.png");
         PostMessageW(review, WM_KEYDOWN, VK_ESCAPE, 0);
         PostMessageW(review, WM_KEYUP, VK_ESCAPE, 0);
         pumpFor(std::chrono::milliseconds{150});

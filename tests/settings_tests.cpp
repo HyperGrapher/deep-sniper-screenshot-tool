@@ -33,6 +33,7 @@ TEST_CASE("missing settings use product defaults") {
 
     REQUIRE(settings.defaultFormat == ImageFormat::Png);
     REQUIRE(settings.captureHotkey == Hotkey{});
+    REQUIRE(settings.titleLength == 25);
     REQUIRE(settings.defaultSaveFolder.filename() == L"DeepSniper");
 }
 
@@ -42,6 +43,9 @@ TEST_CASE("settings round-trip through the JSON store") {
         directory.path() / L"captures-ş",
         ImageFormat::Jpeg,
         Hotkey{kHotkeyControl | kHotkeyShift, 'X'},
+        42,
+        {directory.path() / L"Work", directory.path() / L"Personal"},
+        {directory.path() / L"Recent"},
     };
     const SettingsStore store{directory.path() / "settings.json"};
 

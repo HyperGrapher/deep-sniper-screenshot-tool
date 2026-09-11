@@ -231,6 +231,11 @@ LRESULT CALLBACK SelectionInputHook::mouseProcedure(int code, WPARAM wordParamet
         }
         activeHook_->isClickArmed_ = true;
     }
+    if (wordParameter == WM_RBUTTONDOWN || wordParameter == WM_RBUTTONUP || wordParameter == WM_NCRBUTTONDOWN ||
+        wordParameter == WM_NCRBUTTONUP) {
+        activeHook_->cancelRequested_ = true;
+        return 1;
+    }
     return CallNextHookEx(nullptr, code, wordParameter, longParameter);
 }
 

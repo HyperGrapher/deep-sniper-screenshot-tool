@@ -1,5 +1,7 @@
 #include "ui_widgets.hpp"
 
+#include <string>
+
 #include <FL/Fl.H>
 #include <FL/fl_draw.H>
 
@@ -16,6 +18,7 @@ void drawIcon(ButtonIcon icon, int x, int y) {
         break;
     case ButtonIcon::SaveAs:
     case ButtonIcon::Folder:
+    case ButtonIcon::Destination:
         fl_line(x + 2, y + 20, x + 2, y + 5, x + 9, y + 5);
         fl_line(x + 9, y + 5, x + 12, y + 8, x + 22, y + 8);
         fl_line(x + 22, y + 8, x + 22, y + 20, x + 2, y + 20);
@@ -75,6 +78,24 @@ void ThemedButton::draw() {
     fl_rounded_rect(x(), y(), w() - 1, h() - 1, 8);
     if (icon_ == ButtonIcon::None) {
         draw_label();
+    } else if (icon_ == ButtonIcon::Destination) {
+        fl_color(UiTheme::kAccent);
+        drawIcon(icon_, x() + 8, y() + (h() - 24) / 2);
+        fl_color(labelcolor());
+        fl_font(labelfont(), labelsize());
+        std::string text = label() == nullptr ? "" : label();
+        const int availableWidth = w() - 44;
+        if (fl_width(text.c_str()) > availableWidth) {
+            while (!text.empty() && fl_width((text + "...").c_str()) > availableWidth) {
+                std::size_t start = text.size() - 1;
+                while (start > 0 && (static_cast<unsigned char>(text[start]) & 0xC0) == 0x80) {
+                    --start;
+                }
+                text.resize(start);
+            }
+            text += "...";
+        }
+        fl_draw(text.c_str(), x() + 36, y(), availableWidth, h(), FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
     } else {
         fl_color(active_r() ? labelcolor() : UiTheme::kMuted);
         drawIcon(icon_, x() + (w() - 24) / 2, y() + (h() - 24) / 2);

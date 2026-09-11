@@ -18,7 +18,8 @@
     ImageFormat format,
     std::string& errorMessage);
 [[nodiscard]] bool copyImageToClipboard(const CapturedImage& image, std::string& errorMessage);
-[[nodiscard]] std::filesystem::path defaultCapturePath(const Settings& settings);
+[[nodiscard]] std::filesystem::path defaultCapturePath(const Settings& settings, std::wstring_view windowTitle = {});
 [[nodiscard]] std::optional<std::pair<std::filesystem::path, ImageFormat>> chooseSavePath(
     HWND owner,
-    const Settings& settings);
+    const Settings& settings,
+    std::wstring_view windowTitle = {});
